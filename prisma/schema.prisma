@@ -7,68 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  user
-  moderator
-  admin
-}
-
-enum TournamentStatus {
-  upcoming
-  live
-  completed
-  cancelled
-}
-
-enum TeamMode {
-  solo
-  duo
-  squad
-}
-
-enum TxKind {
-  deposit
-  withdraw
-  entry_fee
-  prize
-  referral
-  bonus
-  adjustment
-  refund
-}
-
-enum TxStatus {
-  pending
-  success
-  failed
-  rejected
-}
-
-enum RequestStatus {
-  pending
-  approved
-  rejected
-}
-
-enum ChatChannel {
-  world
-  admin
-  tournament
-}
-
-enum ReportType {
-  cheating
-  abuse
-  spam
-  other
-}
-
-enum ReportStatus {
-  open
-  reviewing
-  resolved
-  rejected
-}
+enum Role { user moderator admin }
+enum TournamentStatus { upcoming live completed cancelled }
+enum TeamMode { solo duo squad }
+enum TxKind { deposit withdraw entry_fee prize referral bonus adjustment refund }
+enum TxStatus { pending success failed rejected }
+enum RequestStatus { pending approved rejected }
+enum ChatChannel { world admin tournament }
+enum ReportType { cheating abuse spam other }
+enum ReportStatus { open reviewing resolved rejected }
 
 model User {
   id                     String                  @id @default(cuid())
