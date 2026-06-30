@@ -1,0 +1,371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { user moderator admin }
+enum TournamentStatus { upcoming live completed cancelled }
+enum TeamMode { solo duo squad }
+enum TxKind { deposit withdraw entry_fee prize referral bonus adjustment refund }
+enum TxStatus { pending success failed rejected }
+enum RequestStatus { pending approved rejected }
+enum ChatChannel { world admin tournament }
+enum ReportType { cheating abuse spam other }
+enum ReportStatus { open reviewing resolved rejected }
+
+model User {
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  username               String                  @unique
+  name                   String
+  phone                  String?
+  passwordHash           String
+  role                   Role                    @default(user)
+  avatarUrl              String?
+  wallet                 Decimal                 @default(0) @db.Decimal(12,2)
+  winningBalance         Decimal                 @default(0) @db.Decimal(12,2)
+  bonusBalance           Decimal                 @default(0) @db.Decimal(12,2)
+  wins                   Int                     @default(0)
+  losses                 Int                     @default(0)
+  matches                Int                     @default(0)
+  kills                  Int                     @default(0)
+  earnings               Decimal                 @default(0) @db.Decimal(12,2)
+  level                  Int                     @default(1)
+  xp                     Int                     @default(0)
+  verified               Boolean                 @default(false)
+  emailVerifyTokenHash   String?
+  emailVerifyExpiresAt   DateTime?
+  resetTokenHash         String?
+  resetExpiresAt         DateTime?
+  referralCode           String                  @unique
+  referredById           String?
+  referredBy             User?                   @relation("Referrals", fields: [referredById], references: [id])
+  referrals              User[]                  @relation("Referrals")
+  refreshTokens          RefreshToken[]
+  transactions           Transaction[]
+  depositRequests        DepositRequest[]
+  withdrawRequests       WithdrawRequest[]
+  tournamentEntries      TournamentEntry[]
+  squads                 Squad[]                 @relation("SquadOwner")
+  squadMemberships       SquadMember[]
+  chatMessages           ChatMessage[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  setting                UserSetting?
+  achievements           UserAchievement[]
+  reports                Report[]                @relation("ReportReporter")
+  auditLogs              AuditLog[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([role])
+  @@index([referralCode])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  userAgent String?
+  ip        String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Tournament {
+  id                  String              @id @default(cuid())
+  name                String
+  game                String
+  icon                String?
+  description         String?
+  prize               Decimal             @db.Decimal(12,2)
+  fee                 Decimal             @default(0) @db.Decimal(12,2)
+  maxPlayers          Int
+  status              TournamentStatus    @default(upcoming)
+  mode                TeamMode
+  region              String?
+  startsAt            DateTime
+  endsAt              DateTime?
+  roomId              String?
+  roomPassword        String?
+  roomReleasedAt      DateTime?
+  youtubeLiveUrl      String?
+  replayUrl           String?
+  privateCode         String?             @unique
+  bannerUrl           String?
+  gradientStart       String?
+  gradientEnd         String?
+  entries             TournamentEntry[]
+  sponsors            TournamentSponsor[]
+  results             TournamentResult[]
+  prizeRules          PrizeRule[]
+  chats               ChatMessage[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([status, startsAt])
+  @@index([game])
+  @@index([privateCode])
+}
+
+model TournamentEntry {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  squadId      String?
+  squad        Squad?     @relation(fields: [squadId], references: [id])
+  joinedAt     DateTime   @default(now())
+
+  @@unique([tournamentId, userId])
+  @@index([userId])
+}
+
+model PrizeRule {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  placeFrom    Int
+  placeTo      Int
+  percent      Decimal    @db.Decimal(5,2)
+}
+
+model TournamentResult {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId       String?
+  squadId      String?
+  place        Int
+  kills        Int        @default(0)
+  prize        Decimal    @default(0) @db.Decimal(12,2)
+  proofUrl     String?
+  createdAt    DateTime   @default(now())
+}
+
+model Squad {
+  id        String        @id @default(cuid())
+  name      String
+  mode      TeamMode
+  ownerId   String
+  owner     User          @relation("SquadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   SquadMember[]
+  entries   TournamentEntry[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([ownerId])
+}
+
+model SquadMember {
+  id       String @id @default(cuid())
+  squadId  String
+  squad    Squad  @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position Int?
+
+  @@unique([squadId, userId])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        TxKind
+  status      TxStatus @default(pending)
+  amount      Decimal  @db.Decimal(12,2)
+  description String
+  reference   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([reference])
+}
+
+model DepositRequest {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Decimal       @db.Decimal(12,2)
+  utr         String        @unique
+  screenshotUrl String?
+  status      RequestStatus @default(pending)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  note        String?
+  createdAt   DateTime      @default(now())
+
+  @@index([userId, status])
+}
+
+model WithdrawRequest {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(12,2)
+  upiId         String?
+  bankAccount   String?
+  ifsc          String?
+  status        RequestStatus @default(pending)
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  note          String?
+  createdAt     DateTime      @default(now())
+
+  @@index([userId, status])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  channel        ChatChannel
+  tournamentId   String?
+  tournament     Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body           String
+  replyToId      String?
+  pinned         Boolean      @default(false)
+  deletedAt      DateTime?
+  deletedById    String?
+  readReceipts   ChatReceipt[]
+  createdAt      DateTime     @default(now())
+
+  @@index([channel, createdAt])
+  @@index([tournamentId])
+}
+
+model ChatReceipt {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  readAt    DateTime    @default(now())
+
+  @@unique([messageId, userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id                  String  @id @default(cuid())
+  userId              String  @unique
+  user                User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletUpdates       Boolean @default(true)
+  tournamentReminders Boolean @default(true)
+  roomReleased        Boolean @default(true)
+  announcements       Boolean @default(true)
+  pushToken           String?
+}
+
+model UserSetting {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  language String @default("en-IN")
+  theme    String @default("system")
+}
+
+model Achievement {
+  id          String            @id @default(cuid())
+  code        String            @unique
+  name        String
+  description String
+  icon        String?
+  reward      Decimal           @default(0) @db.Decimal(12,2)
+  users       UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  progress      Int         @default(0)
+  unlockedAt    DateTime?
+
+  @@unique([userId, achievementId])
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  reporter    User         @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUserId String?
+  type        ReportType
+  status      ReportStatus @default(open)
+  description String
+  evidenceUrl String?
+  adminNote   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model Sponsor {
+  id          String              @id @default(cuid())
+  name        String
+  logoUrl     String?
+  websiteUrl  String?
+  featured    Boolean             @default(false)
+  active      Boolean             @default(true)
+  tournaments TournamentSponsor[]
+}
+
+model TournamentSponsor {
+  id           String     @id @default(cuid())
+  sponsorId    String
+  sponsor      Sponsor    @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@unique([sponsorId, tournamentId])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entity, entityId])
+}
